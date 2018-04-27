@@ -29,9 +29,41 @@ def get_youtube_link(movie):
     movie.trailer=link
     movie.save()
 
+def top_rated(cls):
+    movies = sorted(cls, key=lambda x: x.Imdb_rating, reverse=True)
+    return movies
+def toprate(movielist):
+    movielist1=[movie for movie in movielist if movie.Imdb_rating]
+    movielist1=[movie for movie in movielist if movie.rating_Count and movie.rating_Count>10000]
+    movielist1=top_rated(movielist1)
+    movie_rem=list(set(movielist).difference(set(movielist1)))
+    movielist=[*movielist1,*movie_rem]
+    return movielist
+
+def top_viewed(cls):
+    movies = sorted(cls, key=lambda x: x.rating_Count, reverse=True)
+    return movies
+
+def topview(movielist):
+
+    movielist1=[movie for movie in movielist if movie.Imdb_rating]
+    movielist1=[movie for movie in movielist if movie.rating_Count and movie.rating_Count>10000]
+    movielist1=top_viewed(movielist1)
+    movie_rem=list(set(movielist).difference(set(movielist1)))
+    movielist=[*movielist1,*movie_rem]
+    return movielist
+
 def index(request):
     if 'user' in request.session and request.user.is_authenticated:
         movielist=Movie.objects.all()
+        movielist=toprate(movielist)
+        rater=Rater.objects.get(user=request.user)
+        ratings=Rating.objects.filter(rater=rater)
+        movie_wathed=rater.my_movies()
+        for movie in movielist:
+            if movie in movie_wathed:
+                movie.Watched= True
+                movie.save()
         if len(movielist)>11:
             paginator = Paginator(movielist, 12) # Show 4 movies per page
             page = request.GET.get('page')
@@ -44,12 +76,15 @@ def rater(request):
         rater=Rater.objects.get(user=request.user)
         ratings=Rating.objects.filter(rater=rater)
         movielist=rater.my_movies()
+        for movie in movielist:
+            movie.Watched= True
+            movie.save()
         if len(movielist)>3:
             paginator = Paginator(movielist, 4) # Show 4 movies per page
             page = request.GET.get('page')
             movies = paginator.get_page(page)
             res={'rater':rater,'movies':movies}
-            return render(request,'profile.html',res)
+        return render(request,'profile.html',res)
     return render(request,'login.html')
 
 def remove_year_name(movies):
@@ -92,8 +127,7 @@ def rec_movie(request):
 def logged_in(request):
     if 'user' in request.session and request.user.is_authenticated:
         movielist=Movie.objects.all()
-
-
+        movielist=toprate(movielist)
         if len(movielist)>7:
             paginator = Paginator(movielist, 8) # Show 4 movies per page
             page = request.GET.get('page')
@@ -110,6 +144,7 @@ def logged_in(request):
                 login(request,user)
                 request.session['user']=username
                 movielist=Movie.objects.all()
+                movielist=toprate(movielist)
                 if len(movielist)>7:
                     paginator = Paginator(movielist, 8) # Show 4 movies per page
                     page = request.GET.get('page')
@@ -140,6 +175,7 @@ def register(request):
             login(request,user)
             request.session['user']=username
             movielist=Movie.objects.all()
+            movielist=toprate(movielist)
             if len(movielist)>7:
                 paginator = Paginator(movielist, 8) # Show 4 movies per page
                 page = request.GET.get('page')
@@ -342,11 +378,22 @@ def search_movie(request):
         if request.method == 'POST':
             if not request.POST['search']:
                 return redirect('logged_in')
+            rater=Rater.objects.get(user=request.user)
+            ratings=Rating.objects.filter(rater=rater)
+            movie_wathed=rater.my_movies()
             if '-w' in request.POST['search']:
                 Q=re.findall('(.*)\s+-w',request.POST['search'])
                 if not Q:
-                    movies=Movie.objects.filter(Watched=False)
-                    return render(request,'main.html',{'movies':movies})
+                    movielist=Movie.objects.all()
+                    movielist=toprate(movielist)
+                    for movie in movielist:
+                        if movie in movie_wathed:
+                            movie.Watched= True
+                            movie.save()
+                    paginator = Paginator(movielist, 8) # Show 4 movies per page
+                    page = request.GET.get('page')
+                    movies = paginator.get_page(page)
+                    return render(request,'main.html',{"movies":movies})
                 else:
                     Q=Q[0]
                     list1=Movie.objects.filter(Name__icontains=Q)
@@ -359,11 +406,18 @@ def search_movie(request):
                 list2=Movie.objects.filter(Year__icontains=Q)
                 list3=Movie.objects.filter(Genre__icontains=Q)
                 list4=Movie.objects.filter(Director__icontains=Q)
-            res=list(set(list1)^set(list2)^set(list3)^set(list4))
-            context={
-                'movies':res,
-            }
-            return render(request,'main.html',context)
+            movielist=list(set(list1)^set(list2)^set(list3)^set(list4))
+            for movie in movielist:
+                if movie in movie_wathed:
+                    movie.Watched= True
+                    movie.save()
+            if(movielist):
+                paginator = Paginator(movielist, 8) # Show 4 movies per page
+                page = request.GET.get('page')
+                movies = paginator.get_page(page)
+                return render(request,'main.html',{"movies":movies})
+            movies=[]
+            return render(request,'main.html',{"movies":movies})
     return redirect('logged_in')
 
 
